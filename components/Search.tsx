@@ -1,37 +1,79 @@
-import Image from "next/image";
-import { useState } from "react";
+import { ChangeEvent, useState } from "react";
+
+import SearchResult from "./SearchResult";
+import Loading from "./Loading";
+
+type ResultsType = {
+  data: [
+    {
+      id: string;
+      attributes: {
+        name: string;
+        slug: string;
+      };
+      relationships: {
+        primary_image?: {
+          data: {
+            id: string;
+          };
+        };
+      };
+    }
+  ];
+  included: [
+    {
+      id: string;
+      type: string;
+      attributes: {
+        url: string;
+      };
+    }
+  ];
+};
 
 const Search = () => {
-  const [query, setQuery] = useState();
-  const [results, setResults] = useState();
+  //
+  // TODO: Add error state
+  //
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ResultsType>();
+  const [loading, setLoading] = useState(false);
 
-  const handleChange = (event: any) => {
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     setQuery(event.target.value);
+    setResults(undefined);
   };
 
-  const handleSubmit = async (event: any) => {
+  //
+  // TODO: Move to handleChange + debounce instead of form submission
+  //
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    const endpoint = `https://search.outdoorsy.com/rentals?filter[keywords]=${query}`;
+
     event.preventDefault();
 
-    const endpoint = `https://search.outdoorsy.com/rentals?filter=${query}`;
-    console.log(endpoint);
+    setLoading(true);
 
-    const results = fetch(endpoint)
+    fetch(endpoint)
       .then((res) => res.json())
       .then(
         (result) => {
           console.log(result);
-          setResults(result?.data);
+          setResults(result);
         },
         (error) => {
           console.error(error);
         }
-      );
+      )
+      .then(() => {
+        setLoading(false);
+      });
   };
 
   return (
     <>
       <form
-        className="mb-4"
+        className="mb-8"
         onSubmit={handleSubmit}
         action="https://search.outdoorsy.com/rentals"
       >
@@ -42,32 +84,30 @@ const Search = () => {
           id="search"
           name="search"
           type="search"
+          placeholder="Search"
           onChange={handleChange}
-          className="p-2 border border-gray-400 rounded-md appearance-none"
+          className="block w-full p-4 border border-gray-400 rounded-md appearance-none"
         />
         <button className="sr-only">Search</button>
       </form>
-      {results && (
+
+      {loading && <Loading />}
+
+      {query && results?.data && (
         <div className="space-y-10">
-          {results.map((el) => {
+          {results.data.map((el) => {
+            const imageId = el?.relationships?.primary_image?.data?.id;
+            const img = results.included.find(
+              (img) => img.id === imageId && img.type === "images"
+            );
+            const imgUrl = img?.attributes?.url;
             return (
-              <div key={el.id}>
-                <div className="flex items-center gap-4">
-                  <div className="w-52 h-32 overflow-hidden rounded-lg relative">
-                    <Image
-                      className="object-cover"
-                      layout="fill"
-                      src={el.attributes.primary_image_url}
-                      alt=""
-                    />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-700">
-                      {el.attributes.name}
-                    </h3>
-                  </div>
-                </div>
-              </div>
+              <SearchResult
+                key={el.id}
+                slug={el.attributes.slug}
+                imgUrl={imgUrl}
+                name={el.attributes.name}
+              />
             );
           })}
         </div>
