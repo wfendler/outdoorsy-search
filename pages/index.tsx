@@ -1,6 +1,5 @@
 import type { NextPage } from "next";
 import Head from "next/head";
-import Image from "next/image";
 
 import Search from "../components/Search";
 
@@ -9,14 +8,12 @@ const Home: NextPage = () => {
     <div>
       <Head>
         <title>Search | Outdoorsy</title>
-        <meta
-          name="description"
-          content="Safe, easy & fully insured. Schedule your RV rental from a huge local selection."
-        />
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
       </Head>
       <main>
-        <Search />
+        <div className="mx-auto my-8 max-w-lg">
+          <Search />
+        </div>
       </main>
     </div>
   );
