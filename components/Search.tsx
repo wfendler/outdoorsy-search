@@ -1,7 +1,9 @@
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, useState, useCallback } from "react";
+import debounce from "lodash.debounce";
 
 import SearchResult from "./SearchResult";
 import Loading from "./Loading";
+import Error from "./Error";
 
 type ResultsType = {
   data: [
@@ -31,43 +33,68 @@ type ResultsType = {
   ];
 };
 
+type FormStateType = {
+  state: "IDLE" | "LOADING" | "LOADED" | "ERROR";
+  error?: string;
+  data?: ResultsType;
+};
+
 const Search = () => {
-  //
-  // TODO: Add error state
-  //
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ResultsType>();
-  const [loading, setLoading] = useState(false);
+  const [formState, setFormState] = useState<FormStateType>({
+    state: "IDLE",
+    data: undefined,
+    error: undefined,
+  });
 
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setQuery(event.target.value);
-    setResults(undefined);
-  };
+  const fetchResults = (searchQuery: string) => {
+    const endpoint = `https://search.outdoorsy.com/rentals?filter[keywords]=${encodeURI(
+      searchQuery
+    )}`;
 
-  //
-  // TODO: Move to handleChange + debounce instead of form submission
-  //
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    const endpoint = `https://search.outdoorsy.com/rentals?filter[keywords]=${query}`;
-
-    event.preventDefault();
-
-    setLoading(true);
+    setFormState({
+      ...formState,
+      state: "LOADING",
+      error: undefined,
+    });
 
     fetch(endpoint)
       .then((res) => res.json())
-      .then(
-        (result) => {
-          console.log(result);
-          setResults(result);
-        },
-        (error) => {
-          console.error(error);
-        }
-      )
-      .then(() => {
-        setLoading(false);
+      .then((json) => {
+        setFormState({
+          state: "LOADED",
+          data: json,
+        });
+      })
+      .catch((error) => {
+        setFormState({
+          state: "ERROR",
+          error: error?.message,
+        });
       });
+  };
+
+  const fetchResultsDebounced = useCallback(
+    debounce((searchQuery) => fetchResults(searchQuery), 400),
+    []
+  );
+
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const inputValue = event.target.value;
+    setQuery(inputValue);
+    setFormState({
+      ...formState,
+      state: "IDLE",
+      data: undefined,
+    });
+    if (inputValue.length < 1) return;
+    return fetchResultsDebounced(inputValue);
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (query.length < 1) return;
+    fetchResults(query);
   };
 
   return (
@@ -76,6 +103,8 @@ const Search = () => {
         className="mb-8"
         onSubmit={handleSubmit}
         action="https://search.outdoorsy.com/rentals"
+        role="search"
+        aria-label="Outdoorsy Listings"
       >
         <label className="sr-only" htmlFor="search">
           Search
@@ -91,27 +120,51 @@ const Search = () => {
         <button className="sr-only">Search</button>
       </form>
 
-      {loading && <Loading />}
+      <div role="region" aria-live="polite">
+        {formState.state === "ERROR" && <Error message={formState.error} />}
 
-      {query && results?.data && (
-        <div className="space-y-10">
-          {results.data.map((el) => {
-            const imageId = el?.relationships?.primary_image?.data?.id;
-            const img = results.included.find(
-              (img) => img.id === imageId && img.type === "images"
-            );
-            const imgUrl = img?.attributes?.url;
-            return (
-              <SearchResult
-                key={el.id}
-                slug={el.attributes.slug}
-                imgUrl={imgUrl}
-                name={el.attributes.name}
-              />
-            );
-          })}
-        </div>
-      )}
+        {formState.state === "LOADING" && <Loading />}
+
+        {(formState.state === "LOADED" || formState.state === "IDLE") &&
+          formState.data && (
+            <>
+              <div className="space-y-10">
+                {formState?.data?.data?.length > 0 ? (
+                  <>
+                    <div className="sr-only" role="status" aria-live="polite">
+                      {formState.data.data.length}
+                      {formState.data.data.length > 1
+                        ? "results"
+                        : "result"}{" "}
+                      for {query}.
+                    </div>
+                    {formState?.data?.data.map((el) => {
+                      const imageId =
+                        el?.relationships?.primary_image?.data?.id;
+                      const img = formState?.data?.included.find(
+                        (img) => img.id === imageId && img.type === "images"
+                      );
+                      const imgUrl = img?.attributes?.url;
+                      return (
+                        <SearchResult
+                          key={el.id}
+                          id={el.id}
+                          slug={el.attributes.slug}
+                          imgUrl={imgUrl}
+                          name={el.attributes.name}
+                        />
+                      );
+                    })}
+                  </>
+                ) : (
+                  <div>
+                    No results for <span className="font-bold">{query}</span>.
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+      </div>
     </>
   );
 };
